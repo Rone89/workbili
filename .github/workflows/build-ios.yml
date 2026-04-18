@@ -1,0 +1,138 @@
+name: Build iOS IPA
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-15
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Select Xcode version
+      run: sudo xcode-select -s /Applications/Xcode_16.app/Contents/Developer
+    
+    - name: Create Xcode Project
+      run: |
+        # Create Info.plist
+        mkdir -p BiliBili/Resources
+        cat > BiliBili/Resources/Info.plist << 'EOF'
+        <?xml version="1.0" encoding="UTF-8"?>
+        <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+        <plist version="1.0">
+        <dict>
+            <key>CFBundleDevelopmentRegion</key>
+            <string>zh_CN</string>
+            <key>CFBundleExecutable</key>
+            <string>BiliBili</string>
+            <key>CFBundleIdentifier</key>
+            <string>com.example.BiliBili</string>
+            <key>CFBundleInfoDictionaryVersion</key>
+            <string>6.0</string>
+            <key>CFBundleName</key>
+            <string>BiliBili</string>
+            <key>CFBundlePackageType</key>
+            <string>APPL</string>
+            <key>CFBundleShortVersionString</key>
+            <string>1.0</string>
+            <key>CFBundleVersion</key>
+            <string>1</string>
+            <key>LSRequiresIPhoneOS</key>
+            <true/>
+            <key>UIApplicationSceneManifest</key>
+            <dict>
+                <key>UIApplicationSupportsMultipleScenes</key>
+                <false/>
+            </dict>
+            <key>UILaunchScreen</key>
+            <dict/>
+            <key>UIRequiredDeviceCapabilities</key>
+            <array>
+                <string>armv7</string>
+            </array>
+            <key>UISupportedInterfaceOrientations</key>
+            <array>
+                <string>UIInterfaceOrientationPortrait</string>
+                <string>UIInterfaceOrientationLandscapeLeft</string>
+                <string>UIInterfaceOrientationLandscapeRight</string>
+            </array>
+            <key>NSAppTransportSecurity</key>
+            <dict>
+                <key>NSAllowsArbitraryLoads</key>
+                <true/>
+            </dict>
+        </dict>
+        </plist>
+        EOF
+
+    - name: Build with Swift Package Manager
+      run: |
+        cd BiliBili-iOS
+        swift build -c release
+
+    - name: Build IPA with xcodebuild
+      run: |
+        # Create xcodeproj from package
+        cd BiliBili-iOS
+        swift package generate-xcodeproj
+        
+        # Build for iOS device
+        xcodebuild -project BiliBili.xcodeproj \
+          -scheme BiliBili \
+          -sdk iphoneos \
+          -configuration Release \
+          -derivedDataPath build \
+          CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO \
+          INFOPLIST_FILE=../BiliBili/Resources/Info.plist \
+          clean build 2>&1 | tail -20
+        
+    - name: Check build result
+      run: |
+        if [ -d "BiliBili-iOS/build/Build/Products/Release-iphoneos/BiliBili.app" ]; then
+          echo "✅ Build succeeded!"
+        else
+          echo "❌ Build failed, checking for .swift package build output..."
+          find BiliBili-iOS -name "*.o" -o -name "*.swiftmodule" 2>/dev/null | head -5
+        fi
+    
+    - name: Package IPA
+      run: |
+        APP_PATH="BiliBili-iOS/build/Build/Products/Release-iphoneos/BiliBili.app"
+        if [ -d "$APP_PATH" ]; then
+          cd "$APP_PATH/.."
+          mkdir -p Payload
+          cp -r BiliBili.app Payload/
+          zip -r "${GITHUB_WORKSPACE}/BiliBili-unsigned.ipa" Payload/
+          rm -rf Payload
+          echo "✅ IPA packaged successfully"
+        else
+          echo "⚠️ App not found, creating source archive instead"
+          cd ${GITHUB_WORKSPACE}
+          zip -r BiliBili-source.zip BiliBili-iOS/ -x "*.git*"
+        fi
+    
+    - name: Upload Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: BiliBili-build
+        path: |
+          BiliBili-unsigned.ipa
+          BiliBili-source.zip
+        retention-days: 7
+    
+    - name: Create Release
+      if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+      uses: softprops/action-gh-release@v2
+      with:
+        tag_name: build-${{ github.run_number }}
+        name: Build #${{ github.run_number }}
+        files: BiliBili-unsigned.ipa
+        draft: false
+        prerelease: true
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

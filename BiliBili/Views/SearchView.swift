@@ -1,0 +1,199 @@
+import SwiftUI
+
+// MARK: - Search View
+struct SearchView: View {
+    @Binding var isPresented: Bool
+    @StateObject private var viewModel = SearchViewModel()
+    
+    var body: some View {
+        VStack(spacing: 0) {
+            // Search bar
+            HStack(spacing: 12) {
+                HStack(spacing: 8) {
+                    Image(systemName: "magnifyingglass")
+                        .foregroundColor(.gray)
+                    
+                    TextField("搜索视频、UP主", text: $viewModel.keyword)
+                        .textFieldStyle(.plain)
+                        .onSubmit {
+                            Task { await viewModel.search() }
+                        }
+                        .submitLabel(.search)
+                    
+                    if !viewModel.keyword.isEmpty {
+                        Button {
+                            viewModel.keyword = ""
+                            viewModel.results = []
+                        } label: {
+                            Image(systemName: "xmark.circle.fill")
+                                .foregroundColor(.gray)
+                        }
+                    }
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .background(Color(.systemGray6))
+                .cornerRadius(20)
+                
+                Button("取消") {
+                    isPresented = false
+                }
+                .foregroundColor(Color.bilibiliPink)
+            }
+            .padding(.horizontal, 16)
+            .padding(.top, SafeAreaHelper.topInset + 8)
+            .padding(.bottom, 12)
+            .background(.ultraThinMaterial)
+            
+            // Content
+            if viewModel.results.isEmpty && !viewModel.isSearching {
+                // Empty state / Hot search suggestions
+                VStack(alignment: .leading, spacing: 16) {
+                    Text("热门搜索")
+                        .font(.headline)
+                        .padding(.horizontal, 16)
+                    
+                    FlowLayout(spacing: 8) {
+                        ForEach(SearchViewModel.hotSearches, id: \.self) { keyword in
+                            Button {
+                                viewModel.keyword = keyword
+                                Task { await viewModel.search() }
+                            } label: {
+                                Text(keyword)
+                                    .font(.caption)
+                                    .padding(.horizontal, 12)
+                                    .padding(.vertical, 6)
+                                    .background(Color(.systemGray6))
+                                    .cornerRadius(16)
+                            }
+                            .foregroundColor(.primary)
+                        }
+                    }
+                    .padding(.horizontal, 16)
+                }
+                .padding(.top, 16)
+            }
+            
+            // Search Results
+            ScrollView {
+                LazyVStack(spacing: 12) {
+                    ForEach(viewModel.results) { item in
+                        NavigationLink(destination: VideoDetailView(bvid: item.bvid)) {
+                            VideoCardView(video: item.toVideoItem)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    
+                    if viewModel.isSearching {
+                        ProgressView()
+                            .padding()
+                    }
+                    
+                    if !viewModel.isSearching && !viewModel.results.isEmpty && viewModel.hasMore {
+                        ProgressView()
+                            .onAppear {
+                                Task { await viewModel.loadMore() }
+                            }
+                    }
+                }
+                .padding(.top, 8)
+            }
+        }
+        .background(Color(.systemBackground))
+    }
+}
+
+// MARK: - Flow Layout
+struct FlowLayout: Layout {
+    var spacing: CGFloat = 8
+    
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let result = layout(in: proposal.width ?? 0, subviews: subviews)
+        return result.size
+    }
+    
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        let result = layout(in: bounds.width, subviews: subviews)
+        for (index, position) in result.positions.enumerated() {
+            subviews[index].place(at: CGPoint(x: bounds.minX + position.x, y: bounds.minY + position.y),
+                                  proposal: ProposedViewSize(result.sizes[index]))
+        }
+    }
+    
+    private func layout(in width: CGFloat, subviews: Subviews) -> (positions: [CGPoint], sizes: [CGSize], size: CGSize) {
+        var positions: [CGPoint] = []
+        var sizes: [CGSize] = []
+        var currentX: CGFloat = 0
+        var currentY: CGFloat = 0
+        var lineHeight: CGFloat = 0
+        var totalHeight: CGFloat = 0
+        
+        for subview in subviews {
+            let size = subview.dimensions(in: .unspecified)
+            sizes.append(size)
+            
+            if currentX + size.width > width && currentX > 0 {
+                currentX = 0
+                currentY += lineHeight + spacing
+                lineHeight = 0
+            }
+            
+            positions.append(CGPoint(x: currentX, y: currentY))
+            lineHeight = max(lineHeight, size.height)
+            currentX += size.width + spacing
+            totalHeight = currentY + lineHeight
+        }
+        
+        return (positions, sizes, CGSize(width: width, height: totalHeight))
+    }
+}
+
+// MARK: - Search ViewModel
+class SearchViewModel: ObservableObject {
+    @Published var keyword: String = ""
+    @Published var results: [SearchItem] = []
+    @Published var isSearching = false
+    @Published var currentPage = 1
+    @Published var hasMore = true
+    
+    static let hotSearches = [
+        "鬼畜", "游戏", "音乐", "舞蹈", "科技", "生活", "美食",
+        "动漫", "电影", "纪录片", "搞笑", "知识", "运动", "时尚"
+    ]
+    
+    private let api = BiliAPI.shared
+    
+    @MainActor
+    func search() async {
+        guard !keyword.trimmingCharacters(in: .whitespaces).isEmpty else { return }
+        currentPage = 1
+        hasMore = true
+        isSearching = true
+        defer { isSearching = false }
+        
+        do {
+            let result = try await api.search(keyword: keyword)
+            results = result.result ?? []
+            hasMore = (result.result?.count ?? 0) >= 20
+        } catch {
+            print("Search error: \(error)")
+        }
+    }
+    
+    @MainActor
+    func loadMore() async {
+        guard !isSearching, hasMore else { return }
+        isSearching = true
+        defer { isSearching = false }
+        
+        do {
+            let result = try await api.search(keyword: keyword, page: currentPage + 1)
+            let newItems = result.result ?? []
+            results.append(contentsOf: newItems)
+            currentPage += 1
+            hasMore = newItems.count >= 20
+        } catch {
+            print("Load more search error: \(error)")
+        }
+    }
+}
