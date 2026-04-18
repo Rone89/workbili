@@ -72,13 +72,11 @@ jobs:
 
     - name: Build with Swift Package Manager
       run: |
-        cd BiliBili-iOS
         swift build -c release
 
     - name: Build IPA with xcodebuild
       run: |
-        # Create xcodeproj from package
-        cd BiliBili-iOS
+        # Create xcodeproj from package (if needed)
         swift package generate-xcodeproj
         
         # Build for iOS device
@@ -88,21 +86,21 @@ jobs:
           -configuration Release \
           -derivedDataPath build \
           CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO \
-          INFOPLIST_FILE=../BiliBili/Resources/Info.plist \
+          INFOPLIST_FILE=BiliBili/Resources/Info.plist \
           clean build 2>&1 | tail -20
         
     - name: Check build result
       run: |
-        if [ -d "BiliBili-iOS/build/Build/Products/Release-iphoneos/BiliBili.app" ]; then
+        if [ -d "build/Build/Products/Release-iphoneos/BiliBili.app" ]; then
           echo "✅ Build succeeded!"
         else
           echo "❌ Build failed, checking for .swift package build output..."
-          find BiliBili-iOS -name "*.o" -o -name "*.swiftmodule" 2>/dev/null | head -5
+          find . -name "*.o" -o -name "*.swiftmodule" 2>/dev/null | head -5
         fi
     
     - name: Package IPA
       run: |
-        APP_PATH="BiliBili-iOS/build/Build/Products/Release-iphoneos/BiliBili.app"
+        APP_PATH="build/Build/Products/Release-iphoneos/BiliBili.app"
         if [ -d "$APP_PATH" ]; then
           cd "$APP_PATH/.."
           mkdir -p Payload
@@ -113,7 +111,7 @@ jobs:
         else
           echo "⚠️ App not found, creating source archive instead"
           cd ${GITHUB_WORKSPACE}
-          zip -r BiliBili-source.zip BiliBili-iOS/ -x "*.git*"
+          zip -r BiliBili-source.zip . -x "*.git*" -x "build/*" -x ".github/*"
         fi
     
     - name: Upload Artifact
