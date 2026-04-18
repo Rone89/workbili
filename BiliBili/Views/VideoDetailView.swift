@@ -525,8 +525,20 @@ class VideoDetailViewModel: ObservableObject {
         
         do {
             let more = try await api.getComments(oid: aid, type: 1, page: next)
-            commentInfo?.replies?.append(contentsOf: more.replies ?? [])
-            commentInfo?.cursor = more.cursor
+            // Create a mutable copy of commentInfo
+            if var currentInfo = commentInfo {
+                // Append new replies
+                if let newReplies = more.replies {
+                    if currentInfo.replies == nil {
+                        currentInfo.replies = []
+                    }
+                    currentInfo.replies?.append(contentsOf: newReplies)
+                }
+                // Update cursor
+                currentInfo.cursor = more.cursor
+                // Assign back
+                commentInfo = currentInfo
+            }
         } catch {
             print("Load more comments error: \(error)")
         }

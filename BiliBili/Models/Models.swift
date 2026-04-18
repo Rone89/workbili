@@ -279,9 +279,9 @@ struct DashStream: Codable {
 
 // MARK: - Comment
 struct CommentInfo: Codable {
-    let cursor: CommentCursor
-    let replies: [CommentReply]?
-    let topReplies: [CommentReply]?
+    var cursor: CommentCursor
+    var replies: [CommentReply]?
+    var topReplies: [CommentReply]?
     
     init() { cursor = CommentCursor(); replies = nil; topReplies = nil }
     

@@ -72,14 +72,14 @@ jobs:
 
     - name: Build with Swift Package Manager
       run: |
-        swift build -c release
+        swift build -c release -Xswiftc -target -Xswiftc arm64-apple-ios16.0
 
     - name: Build IPA with xcodebuild
       run: |
         # Create xcodeproj from package (if needed)
         swift package generate-xcodeproj
         
-        # Build for iOS device
+        # Build for iOS device with explicit deployment target
         xcodebuild -project BiliBili.xcodeproj \
           -scheme BiliBili \
           -sdk iphoneos \
@@ -87,6 +87,7 @@ jobs:
           -derivedDataPath build \
           CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO \
           INFOPLIST_FILE=BiliBili/Resources/Info.plist \
+          IPHONEOS_DEPLOYMENT_TARGET=16.0 \
           clean build 2>&1 | tail -20
         
     - name: Check build result
