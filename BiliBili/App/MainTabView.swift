@@ -8,14 +8,12 @@ struct MainTabView: View {
     enum TabType: Int, CaseIterable {
         case home = 0
         case popular = 1
-        case dynamic = 2
-        case mine = 3
+        case mine = 2
         
         var title: String {
             switch self {
             case .home: return "首页"
             case .popular: return "热门"
-            case .dynamic: return "动态"
             case .mine: return "我的"
             }
         }
@@ -24,7 +22,6 @@ struct MainTabView: View {
             switch self {
             case .home: return "house.fill"
             case .popular: return "flame.fill"
-            case .dynamic: return "doc.text.fill"
             case .mine: return "person.fill"
             }
         }
@@ -49,14 +46,6 @@ struct MainTabView: View {
             .tag(TabType.popular)
             
             NavigationStack {
-                DynamicView()
-            }
-            .tabItem {
-                Label(TabType.dynamic.title, systemImage: TabType.dynamic.icon)
-            }
-            .tag(TabType.dynamic)
-            
-            NavigationStack {
                 MineView()
             }
             .tabItem {
@@ -64,6 +53,7 @@ struct MainTabView: View {
             }
             .tag(TabType.mine)
         }
-        .tint(Color(hex: "FB7299")) // B站粉
+        .tint(Color(hex: "FB7299"))
     }
 }
+

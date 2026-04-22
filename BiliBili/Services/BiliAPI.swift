@@ -327,22 +327,19 @@ class BiliAPI {
         return data
     }
     
-    func getRanking(rid: Int = 0, day: Int = 3) async throws -> [RankingItem] {
-        let response: BiliResponse<[RankingItem]> = try await fetch(
-            BiliResponse<[RankingItem]>.self,
-            from: "\(baseURL)/x/web-interface/ranking/v2",
-            queryItems: [
-                URLQueryItem(name: "rid", value: "\(rid)"),
-                URLQueryItem(name: "type", value: "all"),
-            ]
+    func getWeeklyPopular() async throws -> [RankingItem] {
+        let response: BiliResponse<WeeklyPopularData> = try await fetch(
+            BiliResponse<WeeklyPopularData>.self,
+            from: "\(baseURL)/x/web-interface/popular/series/one"
         )
         guard response.isSuccess, let data = response.data else {
             throw APIError.apiError(response.message)
         }
-        return data
+        return data.list
     }
     
     // MARK: - Regions
+
     func getRegions() async throws -> [RegionCategory] {
         let response: BiliResponse<[RegionCategory]> = try await fetch(
             BiliResponse<[RegionCategory]>.self,
@@ -472,8 +469,23 @@ struct HomeFeedData: Codable {
     }
 }
 
+// MARK: - Weekly Popular Data
+struct WeeklyPopularData: Codable {
+    let list: [RankingItem]
+    
+    init() {
+        list = []
+    }
+    
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        list = (try? c.decode([RankingItem].self, forKey: .list)) ?? []
+    }
+}
+
 // MARK: - API Error
 enum APIError: LocalizedError {
+
     case invalidURL
     case invalidResponse
     case httpError(Int)

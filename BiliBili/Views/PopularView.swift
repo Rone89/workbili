@@ -3,66 +3,84 @@ import SwiftUI
 // MARK: - Popular View
 struct PopularView: View {
     @StateObject private var viewModel = PopularViewModel()
-    @State private var selectedSegment = 0
-    let segments = ["全站", "原创", "每周必看"]
+    @State private var selectedSegment = PopularViewModel.Segment.popular
     
     var body: some View {
         VStack(spacing: 0) {
-            // Segment control
             Picker("排行", selection: $selectedSegment) {
-                ForEach(0..<segments.count, id: \.self) { i in
-                    Text(segments[i]).tag(i)
+                ForEach(PopularViewModel.Segment.allCases, id: \.self) { segment in
+                    Text(segment.title).tag(segment)
                 }
             }
             .pickerStyle(.segmented)
             .padding(.horizontal, 16)
             .padding(.top, 8)
             .padding(.bottom, 12)
-            
-            // Content
-            ScrollView {
-                if selectedSegment == 0 {
-                    // Popular grid
-                    LazyVGrid(columns: [
-                        GridItem(.flexible(), spacing: 12),
-                        GridItem(.flexible(), spacing: 12),
-                    ], spacing: 16) {
-                        ForEach(viewModel.popularItems) { item in
-                            NavigationLink(destination: VideoDetailView(bvid: item.bvid)) {
-                                VideoGridCardView(video: item.toVideoItem)
-                            }
-                            .buttonStyle(.plain)
-                        }
-                    }
-                    .padding(.horizontal, 16)
-                } else {
-                    // Ranking list
-                    LazyVStack(spacing: 12) {
-                        ForEach(Array(viewModel.rankingItems.enumerated()), id: \.element.id) { index, item in
-                            NavigationLink(destination: VideoDetailView(bvid: item.bvid)) {
-                                RankingRowView(index: index, item: item)
-                            }
-                            .buttonStyle(.plain)
-                        }
-                    }
-                    .padding(.horizontal, 16)
-                }
-                
-                // Load more
-                if !viewModel.isLoading {
-                    ProgressView()
-                        .onAppear {
-                            Task { await viewModel.loadMore() }
-                        }
-                }
+            .onChange(of: selectedSegment) { _, newValue in
+                Task { await viewModel.switchSegment(newValue) }
             }
-            .refreshable {
-                await viewModel.refresh()
+            
+            Group {
+                if viewModel.isInitialLoading {
+                    ProgressView("加载热门内容...")
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else if let errorMessage = viewModel.errorMessage, viewModel.items(for: selectedSegment).isEmpty {
+                    ErrorStateView(
+                        title: "热门内容加载失败",
+                        message: errorMessage,
+                        buttonTitle: "重新加载"
+                    ) {
+                        Task { await viewModel.switchSegment(selectedSegment, forceRefresh: true) }
+                    }
+                } else if viewModel.items(for: selectedSegment).isEmpty {
+                    EmptyStateView(
+                        title: "暂无热门内容",
+                        message: "换个分类或者稍后再试。"
+                    )
+                } else {
+                    ScrollView {
+                        if selectedSegment == .popular {
+                            LazyVGrid(columns: [
+                                GridItem(.flexible(), spacing: 12),
+                                GridItem(.flexible(), spacing: 12),
+                            ], spacing: 16) {
+                                ForEach(viewModel.popularItems) { item in
+                                    NavigationLink(destination: VideoDetailView(bvid: item.bvid)) {
+                                        VideoGridCardView(video: item.toVideoItem)
+                                    }
+                                    .buttonStyle(.plain)
+                                }
+                            }
+                            .padding(.horizontal, 16)
+                        } else {
+                            LazyVStack(spacing: 12) {
+                                ForEach(Array(viewModel.rankingItems.enumerated()), id: \.element.id) { index, item in
+                                    NavigationLink(destination: VideoDetailView(bvid: item.bvid)) {
+                                        RankingRowView(index: index, item: item)
+                                    }
+                                    .buttonStyle(.plain)
+                                }
+                            }
+                            .padding(.horizontal, 16)
+                        }
+                        
+                        if let errorMessage = viewModel.errorMessage {
+                            InlineErrorView(message: errorMessage) {
+                                Task { await viewModel.switchSegment(selectedSegment, forceRefresh: true) }
+                            }
+                            .padding(16)
+                        }
+                    }
+                    .refreshable {
+                        await viewModel.switchSegment(selectedSegment, forceRefresh: true)
+                    }
+                }
             }
         }
         .navigationTitle("热门")
     }
 }
+
 
 // MARK: - Ranking Row View
 struct RankingRowView: View {
@@ -128,43 +146,65 @@ struct RankingRowView: View {
 
 // MARK: - Popular ViewModel
 class PopularViewModel: ObservableObject {
+    enum Segment: CaseIterable {
+        case popular
+        case ranking
+        case weekly
+        
+        var title: String {
+            switch self {
+            case .popular: return "全站"
+            case .ranking: return "排行"
+            case .weekly: return "每周必看"
+            }
+        }
+    }
+    
     @Published var popularItems: [RankingItem] = []
     @Published var rankingItems: [RankingItem] = []
-    @Published var isLoading = false
+    @Published var weeklyItems: [RankingItem] = []
+    @Published var isInitialLoading = true
+    @Published var errorMessage: String?
     
     private let api = BiliAPI.shared
     
     init() {
         Task {
-            await refresh()
+            await switchSegment(.popular, forceRefresh: true)
+        }
+    }
+    
+    func items(for segment: Segment) -> [RankingItem] {
+        switch segment {
+        case .popular: return popularItems
+        case .ranking: return rankingItems
+        case .weekly: return weeklyItems
         }
     }
     
     @MainActor
-    func refresh() async {
-        async let popular = api.getPopular()
-        async let ranking = api.getRanking()
-        
-        do {
-            popularItems = try await popular
-            rankingItems = try await ranking
-        } catch {
-            print("Popular refresh error: \(error)")
+    func switchSegment(_ segment: Segment, forceRefresh: Bool = false) async {
+        if !forceRefresh, !items(for: segment).isEmpty {
+            errorMessage = nil
+            return
         }
-    }
-    
-    @MainActor
-    func loadMore() async {
-        // Popular API doesn't support pagination well, but we can try
-        guard !isLoading else { return }
-        isLoading = true
-        defer { isLoading = false }
+        
+        isInitialLoading = true
+        errorMessage = nil
+        defer { isInitialLoading = false }
         
         do {
-            let items = try await api.getPopular(page: popularItems.count / 20 + 1)
-            popularItems.append(contentsOf: items)
+            switch segment {
+            case .popular:
+                popularItems = try await api.getPopular()
+            case .ranking:
+                rankingItems = try await api.getRanking(rid: 0, day: 3)
+            case .weekly:
+                weeklyItems = try await api.getWeeklyPopular()
+            }
         } catch {
-            print("Load more error: \(error)")
+            errorMessage = error.localizedDescription
         }
     }
 }
+

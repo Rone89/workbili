@@ -7,36 +7,60 @@ struct HomeView: View {
     
     var body: some View {
         ZStack(alignment: .top) {
-            // Content
-            ScrollView {
-                LazyVStack(spacing: 12) {
-                    // Banner area
-                    BannerView()
-                        .padding(.horizontal, 16)
-                    
-                    // Video feed
-                    ForEach(viewModel.videos) { video in
-                        NavigationLink(destination: VideoDetailView(bvid: video.bvid ?? video.videoId)) {
-                            VideoCardView(video: video)
-                        }
-                        .buttonStyle(.plain)
+            Group {
+                if viewModel.isInitialLoading {
+                    HomeSkeletonView()
+                } else if let errorMessage = viewModel.errorMessage, viewModel.videos.isEmpty {
+                    ErrorStateView(
+                        title: "首页加载失败",
+                        message: errorMessage,
+                        buttonTitle: "重新加载"
+                    ) {
+                        Task { await viewModel.refresh() }
                     }
-                    
-                    // Load more
-                    if !viewModel.isLoading && viewModel.hasMore {
-                        ProgressView()
-                            .onAppear {
-                                Task { await viewModel.loadMore() }
+                } else if viewModel.videos.isEmpty {
+                    EmptyStateView(
+                        title: "暂时没有内容",
+                        message: "下拉试试重新获取推荐视频。"
+                    )
+                } else {
+                    ScrollView {
+                        LazyVStack(spacing: 12) {
+                            BannerView()
+                                .padding(.horizontal, 16)
+                            
+                            ForEach(viewModel.videos) { video in
+                                NavigationLink(destination: VideoDetailView(bvid: video.bvid ?? video.videoId)) {
+                                    VideoCardView(video: video)
+                                }
+                                .buttonStyle(.plain)
                             }
+                            
+                            if let errorMessage = viewModel.errorMessage, !viewModel.videos.isEmpty {
+                                InlineErrorView(message: errorMessage) {
+                                    Task { await viewModel.loadMore() }
+                                }
+                                .padding(.horizontal, 16)
+                            }
+                            
+                            if viewModel.isLoadingMore {
+                                ProgressView("加载中...")
+                                    .padding(.vertical, 12)
+                            } else if viewModel.hasMore {
+                                ProgressView()
+                                    .onAppear {
+                                        Task { await viewModel.loadMore() }
+                                    }
+                            }
+                        }
+                        .padding(.top, 8)
+                    }
+                    .refreshable {
+                        await viewModel.refresh()
                     }
                 }
-                .padding(.top, 8)
-            }
-            .refreshable {
-                await viewModel.refresh()
             }
             
-            // Navigation bar
             VStack {
                 HomeNavigationBar(showSearch: $showSearch)
                     .background(.ultraThinMaterial)
@@ -55,6 +79,7 @@ struct HomeView: View {
         .animation(.easeInOut(duration: 0.25), value: showSearch)
     }
 }
+
 
 // MARK: - Home Navigation Bar
 struct HomeNavigationBar: View {
@@ -279,9 +304,11 @@ struct VideoGridCardView: View {
 // MARK: - Home ViewModel
 class HomeViewModel: ObservableObject {
     @Published var videos: [VideoItem] = []
-    @Published var isLoading = false
+    @Published var isInitialLoading = true
+    @Published var isLoadingMore = false
     @Published var hasMore = true
     @Published var currentPage = 1
+    @Published var errorMessage: String?
     
     private let api = BiliAPI.shared
     
@@ -293,32 +320,41 @@ class HomeViewModel: ObservableObject {
     func refresh() async {
         currentPage = 1
         hasMore = true
-        isLoading = false
-        await loadVideos(page: 1)
+        errorMessage = nil
+        isInitialLoading = true
+        defer { isInitialLoading = false }
+        await loadVideos(page: 1, append: false)
     }
     
     @MainActor
     func loadMore() async {
-        guard !isLoading, hasMore else { return }
-        await loadVideos(page: currentPage)
+        guard !isInitialLoading, !isLoadingMore, hasMore else { return }
+        await loadVideos(page: currentPage, append: true)
     }
     
     @MainActor
-    private func loadVideos(page: Int) async {
-        isLoading = true
-        defer { isLoading = false }
+    private func loadVideos(page: Int, append: Bool) async {
+        if append {
+            isLoadingMore = true
+        }
+        defer { isLoadingMore = false }
         
         do {
             let newVideos = try await api.getHomeFeed(page: page)
-            if page == 1 {
-                videos = newVideos
-            } else {
+            errorMessage = nil
+            if append {
                 videos.append(contentsOf: newVideos)
+            } else {
+                videos = newVideos
             }
             currentPage = page + 1
             hasMore = newVideos.count >= 20
         } catch {
-            print("Home feed error: \(error)")
+            errorMessage = error.localizedDescription
+            if !append {
+                videos = []
+            }
         }
     }
 }
+

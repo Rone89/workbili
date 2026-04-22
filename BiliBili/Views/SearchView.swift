@@ -5,9 +5,12 @@ struct SearchView: View {
     @Binding var isPresented: Bool
     @StateObject private var viewModel = SearchViewModel()
     
+    init(isPresented: Binding<Bool> = .constant(true)) {
+        _isPresented = isPresented
+    }
+    
     var body: some View {
         VStack(spacing: 0) {
-            // Search bar
             HStack(spacing: 12) {
                 HStack(spacing: 8) {
                     Image(systemName: "magnifyingglass")
@@ -24,6 +27,7 @@ struct SearchView: View {
                         Button {
                             viewModel.keyword = ""
                             viewModel.results = []
+                            viewModel.errorMessage = nil
                         } label: {
                             Image(systemName: "xmark.circle.fill")
                                 .foregroundColor(.gray)
@@ -35,73 +39,93 @@ struct SearchView: View {
                 .background(Color(.systemGray6))
                 .cornerRadius(20)
                 
-                Button("取消") {
-                    isPresented = false
+                if isPresented {
+                    Button("取消") {
+                        isPresented = false
+                    }
+                    .foregroundColor(Color.bilibiliPink)
                 }
-                .foregroundColor(Color.bilibiliPink)
             }
             .padding(.horizontal, 16)
             .padding(.top, SafeAreaHelper.topInset + 8)
             .padding(.bottom, 12)
             .background(.ultraThinMaterial)
             
-            // Content
-            if viewModel.results.isEmpty && !viewModel.isSearching {
-                // Empty state / Hot search suggestions
-                VStack(alignment: .leading, spacing: 16) {
-                    Text("热门搜索")
-                        .font(.headline)
+            Group {
+                if viewModel.isSearching && viewModel.results.isEmpty {
+                    ProgressView("搜索中...")
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else if let errorMessage = viewModel.errorMessage, viewModel.results.isEmpty {
+                    ErrorStateView(
+                        title: "搜索失败",
+                        message: errorMessage,
+                        buttonTitle: "重试"
+                    ) {
+                        Task { await viewModel.search() }
+                    }
+                } else if viewModel.results.isEmpty {
+                    VStack(alignment: .leading, spacing: 16) {
+                        Text("热门搜索")
+                            .font(.headline)
+                            .padding(.horizontal, 16)
+                        
+                        FlowLayout(spacing: 8) {
+                            ForEach(SearchViewModel.hotSearches, id: \.self) { keyword in
+                                Button {
+                                    viewModel.keyword = keyword
+                                    Task { await viewModel.search() }
+                                } label: {
+                                    Text(keyword)
+                                        .font(.caption)
+                                        .padding(.horizontal, 12)
+                                        .padding(.vertical, 6)
+                                        .background(Color(.systemGray6))
+                                        .cornerRadius(16)
+                                }
+                                .foregroundColor(.primary)
+                            }
+                        }
                         .padding(.horizontal, 16)
-                    
-                    FlowLayout(spacing: 8) {
-                        ForEach(SearchViewModel.hotSearches, id: \.self) { keyword in
-                            Button {
-                                viewModel.keyword = keyword
-                                Task { await viewModel.search() }
-                            } label: {
-                                Text(keyword)
-                                    .font(.caption)
-                                    .padding(.horizontal, 12)
-                                    .padding(.vertical, 6)
-                                    .background(Color(.systemGray6))
-                                    .cornerRadius(16)
+                        
+                        Spacer()
+                    }
+                    .padding(.top, 16)
+                } else {
+                    ScrollView {
+                        LazyVStack(spacing: 12) {
+                            ForEach(viewModel.results) { item in
+                                NavigationLink(destination: VideoDetailView(bvid: item.bvid)) {
+                                    VideoCardView(video: item.toVideoItem)
+                                }
+                                .buttonStyle(.plain)
                             }
-                            .foregroundColor(.primary)
-                        }
-                    }
-                    .padding(.horizontal, 16)
-                }
-                .padding(.top, 16)
-            }
-            
-            // Search Results
-            ScrollView {
-                LazyVStack(spacing: 12) {
-                    ForEach(viewModel.results) { item in
-                        NavigationLink(destination: VideoDetailView(bvid: item.bvid)) {
-                            VideoCardView(video: item.toVideoItem)
-                        }
-                        .buttonStyle(.plain)
-                    }
-                    
-                    if viewModel.isSearching {
-                        ProgressView()
-                            .padding()
-                    }
-                    
-                    if !viewModel.isSearching && !viewModel.results.isEmpty && viewModel.hasMore {
-                        ProgressView()
-                            .onAppear {
-                                Task { await viewModel.loadMore() }
+                            
+                            if let errorMessage = viewModel.errorMessage {
+                                InlineErrorView(message: errorMessage) {
+                                    Task { await viewModel.loadMore() }
+                                }
+                                .padding(.horizontal, 16)
                             }
+                            
+                            if viewModel.isSearching {
+                                ProgressView()
+                                    .padding()
+                            } else if viewModel.hasMore {
+                                ProgressView()
+                                    .onAppear {
+                                        Task { await viewModel.loadMore() }
+                                    }
+                            }
+                        }
+                        .padding(.top, 8)
                     }
                 }
-                .padding(.top, 8)
             }
         }
         .background(Color(.systemBackground))
     }
 }
+
 
 // MARK: - Flow Layout
 struct FlowLayout: Layout {
@@ -155,6 +179,7 @@ class SearchViewModel: ObservableObject {
     @Published var isSearching = false
     @Published var currentPage = 1
     @Published var hasMore = true
+    @Published var errorMessage: String?
     
     static let hotSearches = [
         "鬼畜", "游戏", "音乐", "舞蹈", "科技", "生活", "美食",
@@ -169,6 +194,7 @@ class SearchViewModel: ObservableObject {
         currentPage = 1
         hasMore = true
         isSearching = true
+        errorMessage = nil
         defer { isSearching = false }
         
         do {
@@ -176,7 +202,8 @@ class SearchViewModel: ObservableObject {
             results = result.result ?? []
             hasMore = (result.result?.count ?? 0) >= 20
         } catch {
-            print("Search error: \(error)")
+            errorMessage = error.localizedDescription
+            results = []
         }
     }
     
@@ -184,6 +211,7 @@ class SearchViewModel: ObservableObject {
     func loadMore() async {
         guard !isSearching, hasMore else { return }
         isSearching = true
+        errorMessage = nil
         defer { isSearching = false }
         
         do {
@@ -193,7 +221,8 @@ class SearchViewModel: ObservableObject {
             currentPage += 1
             hasMore = newItems.count >= 20
         } catch {
-            print("Load more search error: \(error)")
+            errorMessage = error.localizedDescription
         }
     }
 }
+

@@ -5,6 +5,7 @@ import AVKit
 struct VideoDetailView: View {
     let bvid: String
     @StateObject private var viewModel: VideoDetailViewModel
+    @Environment(\.dismiss) private var dismiss
     
     init(bvid: String) {
         self.bvid = bvid
@@ -13,34 +14,15 @@ struct VideoDetailView: View {
     
     var body: some View {
         VStack(spacing: 0) {
-            // Video Player
-            if let player = viewModel.player {
-                VideoPlayerView(player: player)
-                    .frame(height: 210)
-                    .background(.black)
-            } else {
-                ZStack {
-                    Rectangle()
-                        .fill(Color.gray.opacity(0.3))
-                        .frame(height: 210)
-                    
-                    if viewModel.isLoadingVideo {
-                        ProgressView()
-                            .scaleEffect(1.2)
-                    }
-                }
-            }
+            playerSection
             
-            // Content
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
-                    // Title
                     VStack(alignment: .leading, spacing: 8) {
                         Text(viewModel.detail?.title.htmlDecoded ?? "")
                             .font(.headline)
                             .lineLimit(2)
                         
-                        // Stats
                         HStack(spacing: 16) {
                             StatBadge(icon: "play.circle", count: viewModel.detail?.stat.view ?? 0)
                             StatBadge(icon: "message", count: viewModel.detail?.stat.danmaku ?? 0)
@@ -55,7 +37,6 @@ struct VideoDetailView: View {
                     
                     Divider()
                     
-                    // Action Buttons
                     HStack(spacing: 0) {
                         ActionButton(icon: "hand.thumbsup", title: "点赞", count: viewModel.detail?.stat.like ?? 0) {
                             Task { await viewModel.likeVideo() }
@@ -66,14 +47,13 @@ struct VideoDetailView: View {
                         ActionButton(icon: "heart.fill", title: "收藏", count: viewModel.detail?.stat.favorite ?? 0) {
                             Task { await viewModel.favoriteVideo() }
                         }
-                        ActionButton(icon: "arrowshape.turn.up.right", title: "转发", count: viewModel.detail?.stat.share ?? 0) {}
+                        ActionButton(icon: "magnifyingglass", title: "搜索", count: nil) {}
                         ActionButton(icon: "ellipsis", title: "更多", count: nil) {}
                     }
                     .padding(.vertical, 12)
                     
                     Divider()
                     
-                    // Author Info
                     if let owner = viewModel.detail?.owner {
                         HStack(spacing: 12) {
                             BiliAsyncImage(url: owner.face)
@@ -92,7 +72,6 @@ struct VideoDetailView: View {
                             Spacer()
                             
                             Button {
-                                // Follow action
                             } label: {
                                 Text("+ 关注")
                                     .font(.caption)
@@ -111,7 +90,6 @@ struct VideoDetailView: View {
                     
                     Divider()
                     
-                    // Description
                     if let desc = viewModel.detail?.desc, !desc.isEmpty {
                         VStack(alignment: .leading, spacing: 6) {
                             Text("简介")
@@ -128,7 +106,6 @@ struct VideoDetailView: View {
                         Divider()
                     }
                     
-                    // Episode List (multi-part video)
                     if let pages = viewModel.detail?.pages, pages.count > 1 {
                         VStack(alignment: .leading, spacing: 10) {
                             Text("选集 (\(pages.count))")
@@ -155,7 +132,6 @@ struct VideoDetailView: View {
                         Divider().padding(.top, 12)
                     }
                     
-                    // Comments
                     VStack(alignment: .leading, spacing: 12) {
                         HStack {
                             Text("评论")
@@ -169,7 +145,6 @@ struct VideoDetailView: View {
                             }
                         }
                         
-                        // Comment list
                         if let comments = viewModel.commentInfo?.topReplies, !comments.isEmpty {
                             ForEach(comments) { comment in
                                 CommentView(comment: comment)
@@ -182,13 +157,18 @@ struct VideoDetailView: View {
                             }
                         }
                         
+                        if let commentError = viewModel.commentErrorMessage {
+                            InlineErrorView(message: commentError) {
+                                Task { await viewModel.loadComments() }
+                            }
+                        }
+                        
                         if viewModel.commentInfo == nil && viewModel.isLoadingComments {
                             ProgressView()
                                 .frame(maxWidth: .infinity)
                                 .padding()
                         }
                         
-                        // Load more comments
                         if let isEnd = viewModel.commentInfo?.cursor.isEnd, !isEnd {
                             Button("加载更多评论") {
                                 Task { await viewModel.loadMoreComments() }
@@ -209,7 +189,63 @@ struct VideoDetailView: View {
         .ignoresSafeArea(.container, edges: .top)
         .toolbar(.hidden, for: .navigationBar)
     }
+    
+    @ViewBuilder
+    private var playerSection: some View {
+        ZStack(alignment: .topLeading) {
+            if let player = viewModel.player {
+                VideoPlayerView(player: player)
+                    .frame(height: 220)
+                    .background(.black)
+            } else if let coverURL = viewModel.detail?.coverURL {
+                ZStack {
+                    BiliAsyncImage(url: coverURL)
+                        .frame(height: 220)
+                        .frame(maxWidth: .infinity)
+                        .clipped()
+                    
+                    Rectangle()
+                        .fill(Color.black.opacity(0.35))
+                    
+                    if viewModel.isLoadingVideo {
+                        ProgressView("正在加载视频...")
+                            .tint(.white)
+                            .foregroundColor(.white)
+                    } else if let playbackError = viewModel.playbackErrorMessage {
+                        ErrorOverlayView(message: playbackError) {
+                            Task { await viewModel.retryPlayback() }
+                        }
+                    }
+                }
+            } else {
+                ZStack {
+                    Rectangle()
+                        .fill(Color.gray.opacity(0.3))
+                        .frame(height: 220)
+                    
+                    if viewModel.isLoadingVideo {
+                        ProgressView()
+                            .scaleEffect(1.2)
+                    }
+                }
+            }
+            
+            Button {
+                dismiss()
+            } label: {
+                Image(systemName: "chevron.left")
+                    .font(.headline)
+                    .foregroundColor(.white)
+                    .frame(width: 36, height: 36)
+                    .background(Color.black.opacity(0.5))
+                    .clipShape(Circle())
+            }
+            .padding(.top, SafeAreaHelper.topInset + 8)
+            .padding(.leading, 16)
+        }
+    }
 }
+
 
 // MARK: - Stat Badge
 struct StatBadge: View {
@@ -389,8 +425,32 @@ struct CommentView: View {
     }
 }
 
-// MARK: - Video Player View
-struct VideoPlayerView: View {
+// MARK: - Error Overlay
+struct ErrorOverlayView: View {
+    let message: String
+    let retry: () -> Void
+    
+    var body: some View {
+        VStack(spacing: 10) {
+            Image(systemName: "play.tv.fill")
+                .font(.system(size: 28))
+                .foregroundColor(.white)
+            Text(message)
+                .font(.footnote)
+                .foregroundColor(.white)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 20)
+            Button("重新播放", action: retry)
+                .buttonStyle(.borderedProminent)
+                .tint(Color.bilibiliPink)
+        }
+        .padding(20)
+        .background(Color.black.opacity(0.6))
+        .cornerRadius(14)
+    }
+}
+
+
     let player: AVPlayer
     @StateObject private var playerViewModel = PlayerViewModel()
     
@@ -444,6 +504,8 @@ class VideoDetailViewModel: ObservableObject {
     @Published var isLoadingVideo = false
     @Published var isLoadingComments = false
     @Published var commentInfo: CommentInfo?
+    @Published var playbackErrorMessage: String?
+    @Published var commentErrorMessage: String?
     
     private let api = BiliAPI.shared
     
@@ -455,66 +517,72 @@ class VideoDetailViewModel: ObservableObject {
     @MainActor
     func loadDetail() async {
         isLoadingVideo = true
+        playbackErrorMessage = nil
         defer { isLoadingVideo = false }
         
         do {
-            // Get video detail
             detail = try await api.getVideoDetail(bvid: bvid)
             guard let detail = detail else { return }
-            
             currentCid = detail.cid
-            
-            // Get play URL and create player
-            let playInfo = try await api.getVideoPlayURL(bvid: bvid, cid: detail.cid, qn: 80)
-            
-            // Try to get a playable URL from dash streams
-            var videoURL: URL?
-            if let dashVideo = playInfo.dash?.video?.first {
-                videoURL = URL(string: dashVideo.baseUrl)
-            }
-            
-            if let url = videoURL {
-                player = AVPlayer(url: url)
-                player?.play()
-            }
-            
-            // Load comments
+            await loadPlayback(cid: detail.cid)
             await loadComments()
         } catch {
-            print("Load detail error: \(error)")
+            playbackErrorMessage = error.localizedDescription
+        }
+    }
+    
+    @MainActor
+    func retryPlayback() async {
+        if let cid = detail?.cid, currentCid == 0 {
+            currentCid = cid
+        }
+        await loadPlayback(cid: currentCid == 0 ? (detail?.cid ?? 0) : currentCid)
+    }
+    
+    @MainActor
+    private func loadPlayback(cid: Int) async {
+        guard cid > 0 else { return }
+        isLoadingVideo = true
+        playbackErrorMessage = nil
+        defer { isLoadingVideo = false }
+        
+        do {
+            let playInfo = try await api.getVideoPlayURL(bvid: bvid, cid: cid, qn: 80)
+            if let dashVideo = playInfo.dash?.video?.first,
+               let url = URL(string: dashVideo.baseUrl) {
+                if let player {
+                    player.replaceCurrentItem(with: AVPlayerItem(url: url))
+                    player.play()
+                } else {
+                    let newPlayer = AVPlayer(url: url)
+                    newPlayer.play()
+                    player = newPlayer
+                }
+            } else {
+                playbackErrorMessage = "暂时没有可播放的视频流"
+            }
+        } catch {
+            playbackErrorMessage = error.localizedDescription
         }
     }
     
     @MainActor
     func switchToPage(_ page: VideoPage) async {
         currentCid = page.cid
-        isLoadingVideo = true
-        
-        do {
-            let playInfo = try await api.getVideoPlayURL(bvid: bvid, cid: page.cid, qn: 80)
-            
-            if let dashVideo = playInfo.dash?.video?.first {
-                let url = URL(string: dashVideo.baseUrl)
-                player?.replaceCurrentItem(with: AVPlayerItem(url: url!))
-                player?.play()
-            }
-        } catch {
-            print("Switch page error: \(error)")
-        }
-        
-        isLoadingVideo = false
+        await loadPlayback(cid: page.cid)
     }
     
     @MainActor
     func loadComments() async {
         guard let aid = detail?.aid else { return }
         isLoadingComments = true
+        commentErrorMessage = nil
         defer { isLoadingComments = false }
         
         do {
             commentInfo = try await api.getComments(oid: aid, type: 1)
         } catch {
-            print("Load comments error: \(error)")
+            commentErrorMessage = error.localizedDescription
         }
     }
     
@@ -525,22 +593,18 @@ class VideoDetailViewModel: ObservableObject {
         
         do {
             let more = try await api.getComments(oid: aid, type: 1, page: next)
-            // Create a mutable copy of commentInfo
             if var currentInfo = commentInfo {
-                // Append new replies
                 if let newReplies = more.replies {
                     if currentInfo.replies == nil {
                         currentInfo.replies = []
                     }
                     currentInfo.replies?.append(contentsOf: newReplies)
                 }
-                // Update cursor
                 currentInfo.cursor = more.cursor
-                // Assign back
                 commentInfo = currentInfo
             }
         } catch {
-            print("Load more comments error: \(error)")
+            commentErrorMessage = error.localizedDescription
         }
     }
     
@@ -550,7 +614,7 @@ class VideoDetailViewModel: ObservableObject {
         do {
             _ = try await api.likeVideo(bvid: detail.bvid, aid: detail.aid, like: true)
         } catch {
-            print("Like error: \(error)")
+            playbackErrorMessage = error.localizedDescription
         }
     }
     
@@ -560,7 +624,7 @@ class VideoDetailViewModel: ObservableObject {
         do {
             _ = try await api.coinVideo(bvid: detail.bvid, aid: detail.aid)
         } catch {
-            print("Coin error: \(error)")
+            playbackErrorMessage = error.localizedDescription
         }
     }
     
@@ -570,7 +634,8 @@ class VideoDetailViewModel: ObservableObject {
         do {
             _ = try await api.favoriteVideo(bvid: detail.bvid, aid: detail.aid, add: true)
         } catch {
-            print("Favorite error: \(error)")
+            playbackErrorMessage = error.localizedDescription
         }
     }
 }
+

@@ -7,131 +7,151 @@ on:
     branches: [ main ]
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: macos-15
-    
+
     steps:
-    - uses: actions/checkout@v4
-    
-    - name: Select Xcode version
-      run: sudo xcode-select -s /Applications/Xcode_16.app/Contents/Developer
-    
-    - name: Create Xcode Project
-      run: |
-        # Create Info.plist
-        mkdir -p BiliBili/Resources
-        cat > BiliBili/Resources/Info.plist << 'EOF'
-        <?xml version="1.0" encoding="UTF-8"?>
-        <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-        <plist version="1.0">
-        <dict>
-            <key>CFBundleDevelopmentRegion</key>
-            <string>zh_CN</string>
-            <key>CFBundleExecutable</key>
-            <string>BiliBili</string>
-            <key>CFBundleIdentifier</key>
-            <string>com.example.BiliBili</string>
-            <key>CFBundleInfoDictionaryVersion</key>
-            <string>6.0</string>
-            <key>CFBundleName</key>
-            <string>BiliBili</string>
-            <key>CFBundlePackageType</key>
-            <string>APPL</string>
-            <key>CFBundleShortVersionString</key>
-            <string>1.0</string>
-            <key>CFBundleVersion</key>
-            <string>1</string>
-            <key>LSRequiresIPhoneOS</key>
-            <true/>
-            <key>UIApplicationSceneManifest</key>
-            <dict>
-                <key>UIApplicationSupportsMultipleScenes</key>
-                <false/>
-            </dict>
-            <key>UILaunchScreen</key>
-            <dict/>
-            <key>UIRequiredDeviceCapabilities</key>
-            <array>
-                <string>armv7</string>
-            </array>
-            <key>UISupportedInterfaceOrientations</key>
-            <array>
-                <string>UIInterfaceOrientationPortrait</string>
-                <string>UIInterfaceOrientationLandscapeLeft</string>
-                <string>UIInterfaceOrientationLandscapeRight</string>
-            </array>
-            <key>NSAppTransportSecurity</key>
-            <dict>
-                <key>NSAllowsArbitraryLoads</key>
-                <true/>
-            </dict>
-        </dict>
-        </plist>
-        EOF
+      - uses: actions/checkout@v4
 
-    - name: Build with Swift Package Manager
-      run: |
-        swift build -c release -Xswiftc -target -Xswiftc arm64-apple-ios16.0
+      - name: Select Xcode 26
+        run: |
+          set -e
+          if [ -d "/Applications/Xcode_26.app/Contents/Developer" ]; then
+            sudo xcode-select -s /Applications/Xcode_26.app/Contents/Developer
+          elif [ -d "/Applications/Xcode_26.0.app/Contents/Developer" ]; then
+            sudo xcode-select -s /Applications/Xcode_26.0.app/Contents/Developer
+          else
+            echo "Xcode 26 not found on runner"
+            ls /Applications | grep Xcode || true
+            exit 1
+          fi
+          xcodebuild -version
 
-    - name: Build IPA with xcodebuild
-      run: |
-        # Create xcodeproj from package (if needed)
-        swift package generate-xcodeproj
-        
-        # Build for iOS device with explicit deployment target
-        xcodebuild -project BiliBili.xcodeproj \
-          -scheme BiliBili \
-          -sdk iphoneos \
-          -configuration Release \
-          -derivedDataPath build \
-          CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO \
-          INFOPLIST_FILE=BiliBili/Resources/Info.plist \
-          IPHONEOS_DEPLOYMENT_TARGET=16.0 \
-          clean build 2>&1 | tail -20
-        
-    - name: Check build result
-      run: |
-        if [ -d "build/Build/Products/Release-iphoneos/BiliBili.app" ]; then
-          echo "✅ Build succeeded!"
-        else
-          echo "❌ Build failed, checking for .swift package build output..."
-          find . -name "*.o" -o -name "*.swiftmodule" 2>/dev/null | head -5
-        fi
-    
-    - name: Package IPA
-      run: |
-        APP_PATH="build/Build/Products/Release-iphoneos/BiliBili.app"
-        if [ -d "$APP_PATH" ]; then
-          cd "$APP_PATH/.."
+      - name: Create app Info.plist
+        run: |
+          mkdir -p BiliBili/Resources
+          cat > BiliBili/Resources/Info.plist << 'EOF'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+              <key>CFBundleDevelopmentRegion</key>
+              <string>zh_CN</string>
+              <key>CFBundleExecutable</key>
+              <string>BiliBili</string>
+              <key>CFBundleIdentifier</key>
+              <string>com.workbili.app</string>
+              <key>CFBundleInfoDictionaryVersion</key>
+              <string>6.0</string>
+              <key>CFBundleName</key>
+              <string>BiliBili</string>
+              <key>CFBundlePackageType</key>
+              <string>APPL</string>
+              <key>CFBundleShortVersionString</key>
+              <string>1.0</string>
+              <key>CFBundleVersion</key>
+              <string>${{ github.run_number }}</string>
+              <key>LSRequiresIPhoneOS</key>
+              <true/>
+              <key>UIApplicationSceneManifest</key>
+              <dict>
+                  <key>UIApplicationSupportsMultipleScenes</key>
+                  <false/>
+              </dict>
+              <key>UILaunchScreen</key>
+              <dict/>
+              <key>UISupportedInterfaceOrientations</key>
+              <array>
+                  <string>UIInterfaceOrientationPortrait</string>
+                  <string>UIInterfaceOrientationLandscapeLeft</string>
+                  <string>UIInterfaceOrientationLandscapeRight</string>
+              </array>
+              <key>NSAppTransportSecurity</key>
+              <dict>
+                  <key>NSAllowsArbitraryLoads</key>
+                  <true/>
+              </dict>
+          </dict>
+          </plist>
+          EOF
+
+      - name: Generate Xcode project from Package.swift
+        run: |
+          set -e
+          swift package generate-xcodeproj --output BiliBili.xcodeproj
+          test -f BiliBili.xcodeproj/project.pbxproj
+
+      - name: Build unsigned app
+        run: |
+          set -eo pipefail
+          xcodebuild \
+            -project BiliBili.xcodeproj \
+            -scheme BiliBili-Package \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -configuration Release \
+            -derivedDataPath build \
+            PRODUCT_BUNDLE_IDENTIFIER=com.workbili.app \
+            PRODUCT_NAME=BiliBili \
+            SWIFT_VERSION=5.10 \
+            GENERATE_INFOPLIST_FILE=NO \
+            INFOPLIST_FILE=BiliBili/Resources/Info.plist \
+            CODE_SIGN_IDENTITY='' CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO \
+            IPHONEOS_DEPLOYMENT_TARGET=16.0 \
+            clean build | tee build.log
+
+      - name: Locate built app
+        run: |
+          set -e
+          APP_PATH=$(find build -type d -name '*.app' | head -1)
+          if [ -z "$APP_PATH" ]; then
+            echo "No .app bundle found"
+            find build -maxdepth 4 -type d | sort
+            exit 1
+          fi
+          echo "APP_PATH=$APP_PATH" >> $GITHUB_ENV
+          echo "Found app: $APP_PATH"
+
+      - name: Package unsigned IPA
+        run: |
+          set -e
           mkdir -p Payload
-          cp -r BiliBili.app Payload/
-          zip -r "${GITHUB_WORKSPACE}/BiliBili-unsigned.ipa" Payload/
+          cp -R "$APP_PATH" Payload/BiliBili.app
+          /usr/bin/zip -qry BiliBili-unsigned.ipa Payload
           rm -rf Payload
-          echo "✅ IPA packaged successfully"
-        else
-          echo "⚠️ App not found, creating source archive instead"
-          cd ${GITHUB_WORKSPACE}
-          zip -r BiliBili-source.zip . -x "*.git*" -x "build/*" -x ".github/*"
-        fi
-    
-    - name: Upload Artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: BiliBili-build
-        path: |
-          BiliBili-unsigned.ipa
-          BiliBili-source.zip
-        retention-days: 7
-    
-    - name: Create Release
-      if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-      uses: softprops/action-gh-release@v2
-      with:
-        tag_name: build-${{ github.run_number }}
-        name: Build #${{ github.run_number }}
-        files: BiliBili-unsigned.ipa
-        draft: false
-        prerelease: true
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ls -lh BiliBili-unsigned.ipa
+
+      - name: Archive logs and app bundle
+        run: |
+          set -e
+          cp build.log ci-build.log
+          ditto -c -k --sequesterRsrc --keepParent "$APP_PATH" BiliBili-app.zip
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: workbili-ios-build
+          path: |
+            BiliBili-unsigned.ipa
+            BiliBili-app.zip
+            ci-build.log
+          retention-days: 7
+
+      - name: Create release
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: build-${{ github.run_number }}
+          name: workbili build #${{ github.run_number }}
+          files: |
+            BiliBili-unsigned.ipa
+            BiliBili-app.zip
+            ci-build.log
+          draft: false
+          prerelease: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
