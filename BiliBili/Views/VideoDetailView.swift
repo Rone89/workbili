@@ -388,8 +388,8 @@ struct CommentView: View {
                 }
                 .foregroundColor(.secondary)
                 
-                if let replyCount = comment.rcount, replyCount > 0 {
-                    Text("\(replyCount) 回复")
+                if comment.rcount > 0 {
+                    Text("\(comment.rcount) 回复")
                         .font(.caption2)
                         .foregroundColor(.secondary)
                 }

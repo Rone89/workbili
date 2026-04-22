@@ -104,7 +104,7 @@ struct LoginView: View {
         .task {
             await viewModel.generateQR()
         }
-        .onChange(of: viewModel.loginSuccess) { _, success in
+        .onChange(of: viewModel.loginSuccess) { success in
             if success {
                 appState.isLoggedIn = true
             }

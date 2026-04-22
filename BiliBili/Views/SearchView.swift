@@ -153,7 +153,8 @@ struct FlowLayout: Layout {
         var totalHeight: CGFloat = 0
         
         for subview in subviews {
-            let size = subview.dimensions(in: .unspecified)
+            let dimensions = subview.dimensions(in: .unspecified)
+            let size = CGSize(width: dimensions.width, height: dimensions.height)
             sizes.append(size)
             
             if currentX + size.width > width && currentX > 0 {

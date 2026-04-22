@@ -34,6 +34,23 @@ struct VideoItem: Identifiable, Codable {
     enum CodingKeys: String, CodingKey {
         case id, bvid, aid, title, pic, desc, owner, stat, duration, pubdate, rname, tname, uri, goto
     }
+
+    init(id: Int, bvid: String?, aid: Int?, title: String, pic: String, desc: String?, owner: Owner, stat: VideoStat, duration: Int, pubdate: Int?, rname: String?, tname: String?, uri: String?, goto: String?) {
+        self.id = id
+        self.bvid = bvid
+        self.aid = aid
+        self.title = title
+        self.pic = pic
+        self.desc = desc
+        self.owner = owner
+        self.stat = stat
+        self.duration = duration
+        self.pubdate = pubdate
+        self.rname = rname
+        self.tname = tname
+        self.uri = uri
+        self.goto = goto
+    }
     
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
@@ -65,6 +82,12 @@ struct Owner: Codable {
     let mid: Int
     let name: String
     let face: String
+
+    init(mid: Int, name: String, face: String) {
+        self.mid = mid
+        self.name = name
+        self.face = face
+    }
     
     init() {
         mid = 0; name = ""; face = ""
@@ -87,6 +110,16 @@ struct VideoStat: Codable {
     let favorite: Int
     let share: Int
     let reply: Int
+
+    init(view: Int, danmaku: Int, like: Int, coin: Int, favorite: Int, share: Int, reply: Int) {
+        self.view = view
+        self.danmaku = danmaku
+        self.like = like
+        self.coin = coin
+        self.favorite = favorite
+        self.share = share
+        self.reply = reply
+    }
     
     init() {
         view = 0; danmaku = 0; like = 0; coin = 0
@@ -586,6 +619,9 @@ struct UserNavStat: Codable {
     var dynamicCount: Int { 0 }
 }
 
+typealias UserInfo = UserProfile
+typealias UserStat = UserNavStat
+
 // MARK: - Region/Category
 struct RegionCategory: Codable, Identifiable {
     let id: Int
@@ -664,6 +700,17 @@ struct CookieItem: Codable {
 }
 
 // MARK: - Popular / Ranking
+struct RankingListData: Codable {
+    let list: [RankingItem]
+
+    init() { list = [] }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        list = (try? c.decode([RankingItem].self, forKey: .list)) ?? []
+    }
+}
+
 struct RankingItem: Codable, Identifiable {
     let aid: Int
     let bvid: String

@@ -16,7 +16,7 @@ struct PopularView: View {
             .padding(.horizontal, 16)
             .padding(.top, 8)
             .padding(.bottom, 12)
-            .onChange(of: selectedSegment) { _, newValue in
+            .onChange(of: selectedSegment) { newValue in
                 Task { await viewModel.switchSegment(newValue) }
             }
             

@@ -326,6 +326,21 @@ class BiliAPI {
         }
         return data
     }
+
+    func getRanking(rid: Int = 0, day: Int = 3) async throws -> [RankingItem] {
+        let response: BiliResponse<RankingListData> = try await fetch(
+            BiliResponse<RankingListData>.self,
+            from: "\(baseURL)/x/web-interface/ranking/v2",
+            queryItems: [
+                URLQueryItem(name: "rid", value: "\(rid)"),
+                URLQueryItem(name: "type", value: day == 3 ? "all" : "origin"),
+            ]
+        )
+        guard response.isSuccess, let data = response.data else {
+            throw APIError.apiError(response.message)
+        }
+        return data.list
+    }
     
     func getWeeklyPopular() async throws -> [RankingItem] {
         let response: BiliResponse<WeeklyPopularData> = try await fetch(
@@ -363,6 +378,11 @@ class BiliAPI {
         // Parse user info from nav data
         // The nav endpoint returns a more complex structure, but we handle it in decoding
         return response.data ?? UserProfile()
+    }
+
+    func getUserStat(mid: Int) async throws -> UserNavStat {
+        let profile = try await getUserInfo()
+        return profile.stat ?? UserNavStat()
     }
     
     // MARK: - Dynamic Feed

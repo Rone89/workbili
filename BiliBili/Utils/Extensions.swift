@@ -177,7 +177,7 @@ struct BiliAsyncImage: View {
             case .failure:
                 Image(systemName: placeholder)
                     .foregroundColor(.gray)
-            case .loading:
+            case .empty:
                 Rectangle()
                     .fill(Color.gray.opacity(0.2))
                     .shimmer()

@@ -291,9 +291,7 @@ class ProfileViewModel: ObservableObject {
             let info = try await api.getUserInfo()
             userInfo = info
             
-            if let mid = info.mid {
-                userStat = try await api.getUserStat(mid: mid)
-            }
+            userStat = try await api.getUserStat(mid: info.mid)
         } catch {
             print("Profile load error: \(error)")
         }
