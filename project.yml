@@ -1,0 +1,32 @@
+name: BiliBili
+options:
+  bundleIdPrefix: com.workbili
+  deploymentTarget:
+    iOS: "16.0"
+  createIntermediateGroups: true
+settings:
+  base:
+    PRODUCT_BUNDLE_IDENTIFIER: com.workbili.app
+    PRODUCT_NAME: BiliBili
+    SWIFT_VERSION: "5.10"
+    INFOPLIST_FILE: BiliBili/Resources/Info.plist
+    GENERATE_INFOPLIST_FILE: NO
+    CODE_SIGNING_ALLOWED: NO
+    CODE_SIGNING_REQUIRED: NO
+    CODE_SIGN_IDENTITY: ""
+    SUPPORTS_MACCATALYST: NO
+packages: {}
+targets:
+  BiliBili:
+    type: application
+    platform: iOS
+    sources:
+      - path: BiliBili
+    settings:
+      base:
+        PRODUCT_MODULE_NAME: BiliBili
+schemes:
+  BiliBili:
+    build:
+      targets:
+        BiliBili: all

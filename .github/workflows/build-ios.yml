@@ -79,10 +79,12 @@ jobs:
           </plist>
           EOF
 
-      - name: Generate Xcode project from Package.swift
+      - name: Generate Xcode project
         run: |
           set -e
-          swift package generate-xcodeproj --output BiliBili.xcodeproj
+          rm -rf BiliBili.xcodeproj
+          swift package dump-package > /tmp/package.json
+          xcodegen generate
           test -f BiliBili.xcodeproj/project.pbxproj
 
       - name: Build unsigned app
@@ -90,7 +92,7 @@ jobs:
           set -eo pipefail
           xcodebuild \
             -project BiliBili.xcodeproj \
-            -scheme BiliBili-Package \
+            -scheme BiliBili \
             -sdk iphoneos \
             -destination 'generic/platform=iOS' \
             -configuration Release \
@@ -155,3 +157,4 @@ jobs:
           prerelease: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
