@@ -6,7 +6,7 @@ struct HomeView: View {
     @State private var showSearch = false
     
     var body: some View {
-        ZStack(alignment: .top) {
+        Group {
             Group {
                 if viewModel.isInitialLoading {
                     HomeSkeletonView()
@@ -60,13 +60,10 @@ struct HomeView: View {
                     }
                 }
             }
-            
-            VStack {
-                HomeNavigationBar(showSearch: $showSearch)
-                    .background(.ultraThinMaterial)
-                
-                Spacer()
-            }
+        }
+        .safeAreaInset(edge: .top, spacing: 0) {
+            HomeNavigationBar(showSearch: $showSearch)
+                .background(.ultraThinMaterial)
         }
         .navigationTitle("")
         .navigationBarHidden(true)
