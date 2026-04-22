@@ -450,7 +450,8 @@ struct ErrorOverlayView: View {
     }
 }
 
-
+// MARK: - Video Player View
+struct VideoPlayerView: View {
     let player: AVPlayer
     @StateObject private var playerViewModel = PlayerViewModel()
     
